@@ -1,6 +1,10 @@
 #!/bin/bash
 
-cd /home/arun/projects/mirrortest && python -m mirrortest --mirror "$1"
+# Store the current user's username
+CURRENT_USER=$(who am i | awk '{print $1}')
+
+# Change to the specified directory and run the Python script as the current user
+sudo -u "$CURRENT_USER" bash -c "cd /home/arun/projects/mirrortest && python -m mirrortest --mirror '$1'"
 sleep 5
 
 # Start timer
