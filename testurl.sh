@@ -21,7 +21,7 @@ MIRROR_URL=${1:-"https://mirror.example.com/archlinux"}
 
 # Function to check URL validity
 check_url() {
-    wget --spider -q "$1/core/os/x86_64/core.db" 
+    curl --output /dev/null --silent --head --fail "$1"
     return $?
 }
 
@@ -82,6 +82,6 @@ mv "$MIRRORLIST_BACKUP" /etc/pacman.d/mirrorlist
 end_time=$(date +%s)
 install_time=$((end_time - start_time))
 echo "Arch Linux chroot has been set up at $SUB_DIR"
-echo "Total installation time: $install_time seconds"
+echo "Total installation time: $install_time seconds for mirror $MIRROR_URL"
 
 # End of the script
