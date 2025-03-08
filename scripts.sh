@@ -24,21 +24,21 @@ compose_email() {
     #1 mirror name
     #2 mirror email
     #3 mirror stats
-
-    if [ $? == 0 ] && [ ! -e "$mirror.composed" ]; then
-        touch "$mirror".composed
-        echo "$2" >>"$mirror".composed
-        echo "$3" >>"$mirror".composed
-    else
-        echo "Mirror $mirror already messaged"
-        return
-    fi
+    # echo "Composing email to: $mirror, checking if composed: $mirror.composed "
+    # if [ ! -e "$mirror.composed" ]; then
+    #     touch "$mirror".composed
+    #     echo "$2" >>"$mirror".composed
+    #     echo "$3" >>"$mirror".composed
+    # else
+    #     echo "Mirror $mirror already messaged"
+    #     return
+    # fi
 
     thunderbird -compose "from='pitastrudl@archlinux.org',subject='Problem with $1 Arch Linux mirror',to='$2',body='Hi,
 
-    We have noticed that your Arch Linux mirror $1 is currently not functional. If the issue persists, the mirror or URLs may eventually be disabled. Please investigate the matter at your earliest convenience and let us know once it has been resolved, thank you very much.
+    We have noticed that your Arch Linux mirror / URL $1 is currently not functional. Please investigate the issue at your earliest convenience and let us know once it has been resolved. If the issue persists for too long, the mirror or URLs may eventually be disabled. Thank you very much.
 
-    Below are some values from the Arch Linux website https://archlinux.org/mirrors/status/ where you will find some more information about the values as well.
+    Below are some values of the problematic URLs from the Arch Linux website https://archlinux.org/mirrors/$1 where you will find some more information about the values as well.
 
     $3
 
@@ -47,6 +47,56 @@ compose_email() {
     Arch Linux mirror team
                 '" &
 
+}
+
+check_if_sent() {
+    # $1 = recipient email to check
+    RECIPIENT="$1"
+
+    # Define the SQLite database path
+
+    # Check if the database exists
+    if [[ ! -f "$DB_PATH" ]]; then
+        echo "❌ ERROR: Thunderbird database not found at $DB_PATH"
+        return 2 # Exit code 2 for missing database
+    fi
+
+    # Make a temporary copy to avoid database locks
+
+    # Ensure the copy is in DELETE mode to prevent WAL file issues
+    sqlite3 global-messages-db.copy.sqlite "PRAGMA journal_mode = DELETE" >/dev/null 2>&1
+
+    # Define SQL Query
+    SQL_QUERY="
+    SELECT count(*) FROM messages m
+    JOIN messagesText_content mtc ON m.id = mtc.docid
+    WHERE m.folderID IN (
+        SELECT id FROM folderLocations
+        WHERE name LIKE '%Sent%'
+        OR name LIKE '%mirror_cleanup%'  -- Check additional folder
+    )
+    AND mtc.c3author LIKE '%pitastrudl@archlinux.org%'  -- Match sender email
+    AND m.date >= (strftime('%s', 'now', '-7 days') * 1000000)  -- Only last 7 days
+    AND mtc.c1subject LIKE '%Problem with%'
+    AND mtc.c4recipients LIKE '%$RECIPIENT%'
+    ORDER BY m.date DESC
+    LIMIT 50;
+    "
+
+    # Run the query and store the result
+    RESULT=$(sqlite3 global-messages-db.copy.sqlite "$SQL_QUERY")
+    echo "$RESULT" >>result.log
+    # Remove the temporary database copy
+
+    # Output the result
+    #echo "🔍 Result count: $RESULT"
+
+    # Check if any results were found
+    if [[ "$RESULT" -gt 0 ]]; then
+        return 0 # Email was sent
+    else
+        return 1 # Email not found
+    fi
 }
 
 ##############################
@@ -117,40 +167,42 @@ validate_email() {
 # fetch emails
 ##############################
 fetch_emails() {
-    #1 mirror name
+    MIRROR="$1"
+
     # If cookie file doesn't exist, perform login
     if [ ! -f "$COOKIE_FILE" ]; then
         do_login
     fi
 
     # Check cookie validity
-    check_cookie >/dev/null 2>&1 # have to recreate cookie after some time
-    JSON_FILE="$1"".json"
+    check_cookie >/dev/null 2>&1
+
+    JSON_FILE="$MIRROR.json"
+
     # Fetch the JSON endpoint using the saved cookies
-    curl -b "$COOKIE_FILE" -s "https://archlinux.org/mirrors/$1/json/" -o "$JSON_FILE"
-    #echo "JSON response saved to $JSON_FILE"
+    curl -b "$COOKIE_FILE" -s "https://archlinux.org/mirrors/$MIRROR/json/" -o "$JSON_FILE"
 
     # Parse emails from the JSON
     ADMIN_EMAIL=$(jq -r '.admin_email' "$JSON_FILE")
     ALT_EMAIL=$(jq -r '.alternate_email' "$JSON_FILE")
 
-    # echo "Parsed emails:"
-    # echo "  Admin:     $ADMIN_EMAIL"
-    # echo "  Alternate: $ALT_EMAIL"
+    #echo "📨 Parsed emails: ADMIN=$ADMIN_EMAIL, ALT=$ALT_EMAIL"
 
     VALID_RECIPIENTS=""
 
+    # Validate and build recipient list
     for email in "$ADMIN_EMAIL" "$ALT_EMAIL"; do
         if validate_email "$email"; then
             [[ -n "$VALID_RECIPIENTS" ]] && VALID_RECIPIENTS+=", $email" || VALID_RECIPIENTS="$email"
         fi
     done
 
-    [[ -z "$VALID_RECIPIENTS" ]] && {
-        echo "No valid email addresses provided. Exiting."
-        exit 1
-    }
+    # If no valid recipients, return an error
+    if [[ -z "$VALID_RECIPIENTS" ]]; then
+        echo "⚠️ No valid email addresses found. Exiting."
+        return 1
+    fi
 
-    MAILTO_URI="to:${VALID_RECIPIENTS}"
-    echo "Mail addresses: $MAILTO_URI"
+    MAILTO_URI="${VALID_RECIPIENTS}"
+    echo "$MAILTO_URI" # ✅ Echo this so it's captured by command substitution
 }

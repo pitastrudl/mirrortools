@@ -1,5 +1,6 @@
 # Configuration
-
+rm result.log
+rm emailsent.log
 source scripts.sh
 echo "error here? mirrogroups"
 mirrorgroups=$(jq -r '.urls[]
@@ -9,16 +10,34 @@ mirrorgroups=$(jq -r '.urls[]
             | capture("mirrors/(?<domain>[^/]+)")
             | .domain' all_mirrors.json | sort -u)
 
+DB_PATH="/home/arun/.thunderbird/zwzshc74.default-release/global-messages-db.sqlite"
+cp "$DB_PATH" global-messages-db.copy.sqlite
 for mirror in $mirrorgroups; do
-    echo "doing it for mirror $mirror"
-    date
-    MAILTO_URI=$(fetch_emails "$mirror") # check cookie ne pogleda ce res dela...
-    date
-    stats=$(get_problem_urls "$mirror")
-    date
-    echo "stats are: $stats"
-    compose_email "$mirror" "$MAILTO_URI" "$stats"
-    sleep 3
+    echo "📌 Processing mirror: $mirror"
+
+    # Call fetch_emails and capture return value separately
+    MAILTO_URI=$(fetch_emails "$mirror")
+
+    # Loop through emails to check if a message was already sent
+    IFS=","
+    for email in $MAILTO_URI; do
+        email=$(echo "$email" | xargs)
+        echo "checking for email: $email"
+
+        check_if_sent "$email"
+        if [ $? -eq 0 ]; then
+            echo "✅ Email already sent to: $email" >>emailsent.log
+            continue
+        else
+            echo "📧 Mailto URI: $MAILTO_URI"
+            stats=$(get_problem_urls "$mirror")
+            echo "📊 Mirror Stats: $stats"
+            compose_email "$mirror" "$MAILTO_URI" "$stats"
+            sleep 3
+            break 1
+        fi
+    done
+
 done
 
 # get_problem_urls rackspace.com
