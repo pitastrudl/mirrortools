@@ -1,14 +1,38 @@
 #!/bin/bash
 
+
+fetch_and_convert_time() {
+    local url="$1"  # Replace with the actual URL
+    local epoch_time
+
+    # Fetch the file, read the first line (assuming it contains the epoch)
+    epoch_time=$(curl -s "$url/lastsync" | head -n 1)
+
+    # Check if epoch_time is a valid number
+    if [[ "$epoch_time" =~ ^[0-9]+$ ]]; then
+        # Convert to human-readable format
+	echo -n "last time mirror was synced:"
+        date -d "@$epoch_time"
+    else
+        echo "Error: Retrieved data is not a valid epoch timestamp."
+    fi
+}
+
+# Call the function
+fetch_and_convert_time "$1"
+
 # Store the current user's username
 CURRENT_USER=$(who am i | awk '{print $1}')
 
+
+
+
 # # Change to the specified directory and run the Python script as the current user
-# sudo -u "$CURRENT_USER" bash -c "cd /home/arun/projects/mirrortest && python -m mirrortest --mirror '$1'"
+ sudo -u "$CURRENT_USER" bash -c "cd /home/arun/projects/mirrortest && python -m mirrortest --mirror '$1'"
 # sleep 5
 
 # # Start timer
-# start_time=$(date +%s)
+ start_time=$(date +%s)
 
 # # Check for root privileges 
 # if [[ $(id -u) -ne 0 ]]; then
@@ -27,14 +51,14 @@ fi
 
 # Function to check URL validity
 check_url() {
-    curl --output /dev/null --silent --head --fail "$1"
+    curl -k --output /dev/null --silent --head --fail "$1"
     return $?
 }
 
 # Verify the mirror URL
 if ! check_url "$MIRROR_URL"; then
     echo "Mirror URL is invalid or down. Please provide a valid URL."
-    exit 1
+    #exit 1
 fi
 
 echo "Mirror URL is valid. Proceeding with installation..."
@@ -70,7 +94,7 @@ echo "Server = $MIRROR_URL/\$repo/os/\$arch" > "$CUSTOM_MIRRORLIST"
 sed -i "/\[core\]/,/Include/ s|Include = .*|Include = $CUSTOM_MIRRORLIST|" "$CUSTOM_PACMAN_CONF"
 sed -i "/\[extra\]/,/Include/ s|Include = .*|Include = $CUSTOM_MIRRORLIST|" "$CUSTOM_PACMAN_CONF"
 sed -i "/\[multilib\]/,/Include/ s|Include = .*|Include = $CUSTOM_MIRRORLIST|" "$CUSTOM_PACMAN_CONF"
-cat "$CUSTOM_PACMAN_CONF"
+#cat "$CUSTOM_PACMAN_CONF"
 # Bootstrap the Arch Linux system using the custom pacman configuration
 yes '' | pacstrap -C "$CUSTOM_PACMAN_CONF" -i "$SUB_DIR" $PACKAGES
 
