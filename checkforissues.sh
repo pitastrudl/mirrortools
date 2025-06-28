@@ -2,7 +2,6 @@
 rm result.log
 rm emailsent.log
 source scripts.sh
-echo "error here? mirrogroups"
 mirrorgroups=$(jq -r '.urls[]
             | select(.active)
             | select( .score > 100  or .score == null or .delay > 259200  )
@@ -24,8 +23,7 @@ for mirror in $mirrorgroups; do
         email=$(echo "$email" | xargs)
         echo "checking for email: $email"
 
-        check_if_sent "$email"
-        if [ $? -eq 0 ]; then
+        if check_if_sent "$email"; then
             echo "✅ Email already sent to: $email" >>emailsent.log
             continue
         else
@@ -39,23 +37,3 @@ for mirror in $mirrorgroups; do
     done
 
 done
-
-# get_problem_urls rackspace.com
-
-# --- below not use
-# for mirrordetails in $(jq '.urls[] | select( (.score > 100 and .active) or (.score == null and .active ) ) | .details' tier2.json); do
-#     echo $mirrordetails | grep -oP 'mirrors/\K[^/]+'
-# done #| sort -u
-
-# for mirrordetails in $(jq '.urls[]' all_mirrors.json); do
-#     echo $mirrordetails | grep -oP 'mirrors/\K[^/]+'
-# done #| sort -u
-#
-# # this owrks
-#
-
-# vzet mirror iz public jsona
-# pogledat statistiko za vse urlje
-# izpisat urlje z problemi
-# izluscit details in admin email (mogoce imeti posebi json za admin urlje)
-# prpopat zraven z problem urlji
