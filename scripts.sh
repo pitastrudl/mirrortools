@@ -54,6 +54,7 @@ check_if_sent() {
     RECIPIENT="$1"
 
     # Define the SQLite database path
+    DB_PATH="/home/arun/.thunderbird/zwzshc74.default-release/global-messages-db.sqlite"
 
     # Check if the database exists
     if [[ ! -f "$DB_PATH" ]]; then
@@ -61,11 +62,26 @@ check_if_sent() {
         return 2 # Exit code 2 for missing database
     fi
 
-    # Make a temporary copy to avoid database locks
-
     # Ensure the copy is in DELETE mode to prevent WAL file issues
     sqlite3 global-messages-db.copy.sqlite "PRAGMA journal_mode = DELETE" >/dev/null 2>&1
 
+    # Check if email exists in skip list
+    SKIP_FILE="skip_emails.txt"
+    CLEAN_RECIPIENT=$(echo "$RECIPIENT" | xargs) # Trim recipient whitespace
+    if [[ -f "$SKIP_FILE" ]]; then
+        while IFS= read -r line; do
+            SKIP_EMAIL=$(echo "$line" | xargs) # Trim whitespace
+
+            cmp -s <(echo -n "$CLEAN_RECIPIENT") <(echo -n "$SKIP_EMAIL")
+            echo "cmp exit code: $?"
+            echo "clean recepient is1: $CLEAN_RECIPIENT and skip email is $SKIP_EMAIL"
+
+            if [[ "$CLEAN_RECIPIENT" == "$SKIP_EMAIL" ]]; then
+                return 0 # Exit with code 3 (email skipped)
+            fi
+        done <"$SKIP_FILE"
+    fi
+    echo "clean recepient is2: $CLEAN_RECIPIENT"
     # Define SQL Query
     SQL_QUERY="
     SELECT count(*) FROM messages m
@@ -76,9 +92,9 @@ check_if_sent() {
         OR name LIKE '%mirror_cleanup%'  -- Check additional folder
     )
     AND mtc.c3author LIKE '%pitastrudl@archlinux.org%'  -- Match sender email
-    AND m.date >= (strftime('%s', 'now', '-7 days') * 1000000)  -- Only last 7 days
+    AND m.date >= (strftime('%s', 'now', '-58 days') * 1000000)  -- Only last 40 days
     AND mtc.c1subject LIKE '%Problem with%'
-    AND mtc.c4recipients LIKE '%$RECIPIENT%'
+    AND mtc.c4recipients LIKE '%$CLEAN_RECIPIENT%'
     ORDER BY m.date DESC
     LIMIT 50;
     "
@@ -86,13 +102,9 @@ check_if_sent() {
     # Run the query and store the result
     RESULT=$(sqlite3 global-messages-db.copy.sqlite "$SQL_QUERY")
     echo "$RESULT" >>result.log
-    # Remove the temporary database copy
-
-    # Output the result
-    #echo "🔍 Result count: $RESULT"
 
     # Check if any results were found
-    if [[ "$RESULT" -gt 0 ]]; then
+    if [[ "$RESULT" =~ ^[0-9]+$ && "$RESULT" -ge 1 ]]; then
         return 0 # Email was sent
     else
         return 1 # Email not found
