@@ -1,64 +1,47 @@
 #!/bin/bash
 
+check_url() {
+    curl --output /dev/null --silent --head --fail "$1/lastsync"
+    return $?
+}
 
 fetch_and_convert_time() {
-    local url="$1"  # Replace with the actual URL
+    # Fetches lastsync from URL and converts it
+    local url="$1"
     local epoch_time
 
-    # Fetch the file, read the first line (assuming it contains the epoch)
     epoch_time=$(curl -s "$url/lastsync" | head -n 1)
 
-    # Check if epoch_time is a valid number
     if [[ "$epoch_time" =~ ^[0-9]+$ ]]; then
-        # Convert to human-readable format
-	echo -n "last time mirror was synced:"
+        echo -n "last time mirror was synced:"
         date -d "@$epoch_time"
     else
         echo "Error: Retrieved data is not a valid epoch timestamp."
     fi
 }
 
-# Call the function
 fetch_and_convert_time "$1"
 
-# Store the current user's username
 CURRENT_USER=$(who am i | awk '{print $1}')
 
+# Assumes you have mirrortest https://github.com/Torxed/mirrortest (Needs access to T0)
+sudo -u "$CURRENT_USER" bash -c "cd mirrortest && python -m mirrortest --mirror '$1'"
 
+# Start time of mirror test
+start_time=$(date +%s)
 
-
-# # Change to the specified directory and run the Python script as the current user
- sudo -u "$CURRENT_USER" bash -c "cd /home/arun/projects/mirrortest && python -m mirrortest --mirror '$1'"
-# sleep 5
-
-# # Start timer
- start_time=$(date +%s)
-
-# # Check for root privileges 
-# if [[ $(id -u) -ne 0 ]]; then
-#     echo "This script must be run as root."
-#     exit 1
-# fi
-
-# URL for the Arch Linux mirror (must be passed as an argument)
+# URL for the Arch Linux mirror being tested
 MIRROR_URL="$1"
 
-# Check if a mirror URL was provided
 if [[ -z "$MIRROR_URL" ]]; then
     echo "No mirror URL provided. Please provide a mirror URL as an argument."
     exit 1
 fi
 
-# Function to check URL validity
-check_url() {
-    curl -k --output /dev/null --silent --head --fail "$1"
-    return $?
-}
-
 # Verify the mirror URL
 if ! check_url "$MIRROR_URL"; then
     echo "Mirror URL is invalid or down. Please provide a valid URL."
-    #exit 1
+    exit 1
 fi
 
 echo "Mirror URL is valid. Proceeding with installation..."
@@ -68,12 +51,10 @@ PACKAGES="base linux linux-firmware vim zsh git networkmanager gnome gnome-extra
           python python-pip gcc make docker virtualbox jre-openjdk"
 
 # Root directory for all chroot installations
-# ROOT_DIR="/mnt/arch-chroot-root"
 ROOT_DIR="/tmp/mirrors"
 # Unique subdirectory for this installation
 SUB_DIR="${ROOT_DIR}/$(date +%Y%m%d-%H%M%S)"
 
-# Create the unique subdirectory for the chroot environment
 mkdir -p "$SUB_DIR"
 mount -t tmpfs none "$SUB_DIR"
 
@@ -88,7 +69,7 @@ cp /etc/pacman.conf "$CUSTOM_PACMAN_CONF"
 sed -i '/^#ParallelDownloads = /c\ParallelDownloads = 5' "$CUSTOM_PACMAN_CONF"
 
 # Create the custom mirrorlist with the provided mirror URL
-echo "Server = $MIRROR_URL/\$repo/os/\$arch" > "$CUSTOM_MIRRORLIST"
+echo "Server = $MIRROR_URL/\$repo/os/\$arch" >"$CUSTOM_MIRRORLIST"
 
 # Update the custom pacman.conf to use the custom mirrorlist for all relevant sections
 sed -i "/\[core\]/,/Include/ s|Include = .*|Include = $CUSTOM_MIRRORLIST|" "$CUSTOM_PACMAN_CONF"
@@ -122,4 +103,3 @@ install_time=$((end_time - start_time))
 echo "Arch Linux chroot has been set up at $SUB_DIR"
 echo "Total installation time: $install_time seconds"
 echo "Finished checking $MIRROR_URL"
-# End of the script
