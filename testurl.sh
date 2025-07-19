@@ -1,7 +1,8 @@
 #!/bin/bash
 
 check_url() {
-    curl --output /dev/null --silent --head --fail "$1/lastsync"
+    echo "Checking URL: ${1}lastsync"
+    curl --output /dev/null --silent --head --fail "${1}lastsync"
     return $?
 }
 
@@ -10,7 +11,8 @@ fetch_and_convert_time() {
     local url="$1"
     local epoch_time
 
-    epoch_time=$(curl -s "$url/lastsync" | head -n 1)
+    epoch_time=$(curl -s "${url}lastsync" | head -n 1)
+    echo "The epoch time fetched is: $epoch_time"
 
     if [[ "$epoch_time" =~ ^[0-9]+$ ]]; then
         echo -n "last time mirror was synced:"
@@ -25,7 +27,7 @@ fetch_and_convert_time "$1"
 CURRENT_USER=$(who am i | awk '{print $1}')
 
 # Assumes you have mirrortest https://github.com/Torxed/mirrortest (Needs access to T0)
-sudo -u "$CURRENT_USER" bash -c "cd mirrortest && python -m mirrortest --mirror '$1'"
+sudo -u "$CURRENT_USER" bash -c "cd mirrortest && python  -m mirrortest --verbose --mirror $1"
 
 # Start time of mirror test
 start_time=$(date +%s)
@@ -75,8 +77,10 @@ echo "Server = $MIRROR_URL/\$repo/os/\$arch" >"$CUSTOM_MIRRORLIST"
 sed -i "/\[core\]/,/Include/ s|Include = .*|Include = $CUSTOM_MIRRORLIST|" "$CUSTOM_PACMAN_CONF"
 sed -i "/\[extra\]/,/Include/ s|Include = .*|Include = $CUSTOM_MIRRORLIST|" "$CUSTOM_PACMAN_CONF"
 sed -i "/\[multilib\]/,/Include/ s|Include = .*|Include = $CUSTOM_MIRRORLIST|" "$CUSTOM_PACMAN_CONF"
-#cat "$CUSTOM_PACMAN_CONF"
+
 # Bootstrap the Arch Linux system using the custom pacman configuration
+echo -n "mirror url in conf is: "
+grep http "$CUSTOM_MIRRORLIST"
 yes '' | pacstrap -C "$CUSTOM_PACMAN_CONF" -i "$SUB_DIR" $PACKAGES
 
 # Basic configuration inside the chroot
